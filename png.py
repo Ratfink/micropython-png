@@ -141,30 +141,26 @@ And now, my famous members
 --------------------------
 """
 
-#__version__ = "0.0.18"
-
-import uio
+try:
+    import io
+except ImportError:
+    import uio as io
 import itertools
 import math
 #import re
-import ustruct as struct
+try:
+    import struct
+except ImportError:
+    import ustruct as struct
 import sys
-# http://www.python.org/doc/2.4.4/lib/module-warnings.html
 import warnings
-import uzlib
+try:
+    import zlib
+except ImportError:
+    import uzlib as zlib
 
 from array import array
 from functools import reduce
-
-#try:
-#    # `cpngfilters` is a Cython module: it must be compiled by
-#    # Cython for this import to work.
-#    # If this import does work, then it overrides pure-python
-#    # filtering functions defined later in this file (see `class
-#    # pngfilters`).
-#    import cpngfilters as pngfilters
-#except ImportError:
-#    pass
 
 
 #__all__ = ['Image', 'Reader', 'Writer', 'write_chunks', 'from_array']
@@ -184,7 +180,6 @@ _adam7 = ((0, 0, 8, 8),
           (0, 1, 1, 2))
 
 def group(s, n):
-    # See http://www.python.org/doc/2.6/library/functions.html#zip
     return list(zip(*[iter(s)]*n))
 
 #def interleave_planes(ipixels, apixels, ipsize, apsize):
@@ -205,7 +200,6 @@ def group(s, n):
 #    newtotal = itotal + atotal
 #    newpsize = ipsize + apsize
 #    # Set up the output buffer
-#    # See http://www.python.org/doc/2.4.4/lib/module-array.html#l2h-1356
 #    out = array(ipixels.typecode)
 #    # It's annoying that there is no cheap way to set the array size :-(
 #    out.extend(ipixels)
@@ -1318,7 +1312,7 @@ class Reader:
         elif "file" in kw:
             self.file = kw["file"]
         elif "bytes" in kw:
-            self.file = uio.BytesIO(kw["bytes"])
+            self.file = io.BytesIO(kw["bytes"])
         else:
             raise TypeError("expecting filename, file or bytes array")
 
@@ -1428,67 +1422,6 @@ class Reader:
         # as 'sub', with only 'average' requiring any special case.
         if not previous:
             previous = array('B', [0]*len(scanline))
-
-        def sub():
-            """Undo sub filter."""
-
-            ai = 0
-            # Loop starts at index fu.  Observe that the initial part
-            # of the result is already filled in correctly with
-            # scanline.
-            for i in range(fu, len(result)):
-                x = scanline[i]
-                a = result[ai]
-                result[i] = (x + a) & 0xff
-                ai += 1
-
-        def up():
-            """Undo up filter."""
-
-            for i in range(len(result)):
-                x = scanline[i]
-                b = previous[i]
-                result[i] = (x + b) & 0xff
-
-        def average():
-            """Undo average filter."""
-
-            ai = -fu
-            for i in range(len(result)):
-                x = scanline[i]
-                if ai < 0:
-                    a = 0
-                else:
-                    a = result[ai]
-                b = previous[i]
-                result[i] = (x + ((a + b) >> 1)) & 0xff
-                ai += 1
-
-        def paeth():
-            """Undo Paeth filter."""
-
-            # Also used for ci.
-            ai = -fu
-            for i in range(len(result)):
-                x = scanline[i]
-                if ai < 0:
-                    a = c = 0
-                else:
-                    a = result[ai]
-                    c = previous[ai]
-                b = previous[i]
-                p = a + b - c
-                pa = abs(p - a)
-                pb = abs(p - b)
-                pc = abs(p - c)
-                if pa <= pb and pa <= pc:
-                    pr = a
-                elif pb <= pc:
-                    pr = b
-                else:
-                    pr = c
-                result[i] = (x + pr) & 0xff
-                ai += 1
 
         # Call appropriate filter algorithm.  Note that 0 has already
         # been dealt with.
@@ -1862,7 +1795,7 @@ class Reader:
             # Currently, with no max_length parameter to decompress,
             # this routine will do one yield per IDAT chunk: Not very
             # incremental.
-            #d = uzlib.decompress()
+            #d = zlib.decompress()
             # Each IDAT chunk is passed to the decompressor, then any
             # remaining state is decompressed out.
             alldata = b''
@@ -1872,7 +1805,7 @@ class Reader:
                 # size.
                 #yield array('B', d.decompress(data))
             #yield array('B', d.flush())
-            yield uzlib.decompress(alldata)
+            yield zlib.decompress(alldata)
 
         self.preamble(lenient=lenient)
         raw = iterdecomp(iteridat())

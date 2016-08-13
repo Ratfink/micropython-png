@@ -15,21 +15,30 @@
 #   nosetests .
 
 import itertools
-import ustruct as struct
+try:
+    import struct
+except ImportError:
+    import ustruct as struct
 import sys
 # http://www.python.org/doc/2.4.4/lib/module-unittest.html
 import unittest
-import uzlib as zlib
+try:
+    import zlib
+except ImportError:
+    import uzlib as zlib
 
 from array import array
-from uio import BytesIO
+try:
+    from io import BytesIO
+except ImportError:
+    from uio import BytesIO
 
 try:
     import numpy
 except ImportError:
     numpy = False
 
-import upng as png
+import png
 import pngsuite
 
 
@@ -416,7 +425,7 @@ class Test(unittest.TestCase):
     def testEmpty(self):
         """Test empty file."""
 
-        r = png.Reader(bytes='')
+        r = png.Reader(bytes=b'')
         self.assertRaises(png.FormatError, r.asDirect)
     def testSigOnly(self):
         """Test file containing just signature bytes."""
@@ -646,7 +655,7 @@ class Test(unittest.TestCase):
 #            self.paeth(233, 32, 211, 21), self.paeth(236, 34, 212, 22)
 #            ])
     def testUnfilterScanline(self):
-        reader = png.Reader(bytes='')
+        reader = png.Reader(bytes=b'')
         reader.psize = 3
         scanprev = array('B', [20, 21, 22, 210, 211, 212])
         scanline = array('B', [30, 32, 34, 230, 233, 236])
@@ -665,7 +674,7 @@ class Test(unittest.TestCase):
         self.assertEqual(list(out), [50, 53, 56, 184, 188, 192])  # paeth
     def testUnfilterScanlinePaeth(self):
         # This tests more edge cases in the paeth unfilter
-        reader = png.Reader(bytes='')
+        reader = png.Reader(bytes=b'')
         reader.psize = 3
         scanprev = array('B', [2, 0, 0, 0, 9, 11])
         scanline = array('B', [6, 10, 9, 100, 101, 102])
