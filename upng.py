@@ -187,12 +187,6 @@ def group(s, n):
     # See http://www.python.org/doc/2.6/library/functions.html#zip
     return list(zip(*[iter(s)]*n))
 
-#def isarray(x):
-#    return isinstance(x, array)
-#
-#def tostring(row):
-#    return row.tostring()
-#
 #def interleave_planes(ipixels, apixels, ipsize, apsize):
 #    """
 #    Interleave (colour) planes, e.g. RGB + A = RGBA.
@@ -1276,30 +1270,6 @@ class ChunkError(FormatError):
 #            w.write(file, self.rows)
 #        finally:
 #            close()
-#
-#class _readable:
-#    """
-#    A simple file-like interface for strings and arrays.
-#    """
-#
-#    def __init__(self, buf):
-#        self.buf = buf
-#        self.offset = 0
-#
-#    def read(self, n):
-#        r = self.buf[self.offset:self.offset+n]
-#        if isarray(r):
-#            r = r.tostring()
-#        self.offset += n
-#        return r
-#
-#try:
-#    str(b'dummy', 'ascii')
-#except TypeError:
-#    as_str = str
-#else:
-#    def as_str(x):
-#        return str(x, 'ascii')
 
 class Reader:
     """
@@ -2248,410 +2218,103 @@ def check_bitdepth_colortype(bitdepth, colortype):
 #        return False
 
 
-# === Support for users without Cython ===
+class pngfilters(object):
 
-try:
-    pngfilters
-except NameError:
-    class pngfilters(object):
+    @staticmethod
+    def undo_filter_sub(filter_unit, scanline, previous, result):
+        """Undo sub filter."""
 
-        @staticmethod
-        def undo_filter_sub(filter_unit, scanline, previous, result):
-            """Undo sub filter."""
+        ai = 0
+        # Loops starts at index fu.  Observe that the initial part
+        # of the result is already filled in correctly with
+        # scanline.
+        for i in range(filter_unit, len(result)):
+            x = scanline[i]
+            a = result[ai]
+            result[i] = (x + a) & 0xff
+            ai += 1
 
-            ai = 0
-            # Loops starts at index fu.  Observe that the initial part
-            # of the result is already filled in correctly with
-            # scanline.
-            for i in range(filter_unit, len(result)):
-                x = scanline[i]
+    @staticmethod
+    def undo_filter_up(filter_unit, scanline, previous, result):
+        """Undo up filter."""
+
+        for i in range(len(result)):
+            x = scanline[i]
+            b = previous[i]
+            result[i] = (x + b) & 0xff
+
+    @staticmethod
+    def undo_filter_average(filter_unit, scanline, previous, result):
+        """Undo up filter."""
+
+        ai = -filter_unit
+        for i in range(len(result)):
+            x = scanline[i]
+            if ai < 0:
+                a = 0
+            else:
                 a = result[ai]
-                result[i] = (x + a) & 0xff
-                ai += 1
+            b = previous[i]
+            result[i] = (x + ((a + b) >> 1)) & 0xff
+            ai += 1
 
-        @staticmethod
-        def undo_filter_up(filter_unit, scanline, previous, result):
-            """Undo up filter."""
+    @staticmethod
+    def undo_filter_paeth(filter_unit, scanline, previous, result):
+        """Undo Paeth filter."""
 
-            for i in range(len(result)):
-                x = scanline[i]
-                b = previous[i]
-                result[i] = (x + b) & 0xff
+        # Also used for ci.
+        ai = -filter_unit
+        for i in range(len(result)):
+            x = scanline[i]
+            if ai < 0:
+                a = c = 0
+            else:
+                a = result[ai]
+                c = previous[ai]
+            b = previous[i]
+            p = a + b - c
+            pa = abs(p - a)
+            pb = abs(p - b)
+            pc = abs(p - c)
+            if pa <= pb and pa <= pc:
+                pr = a
+            elif pb <= pc:
+                pr = b
+            else:
+                pr = c
+            result[i] = (x + pr) & 0xff
+            ai += 1
 
-        @staticmethod
-        def undo_filter_average(filter_unit, scanline, previous, result):
-            """Undo up filter."""
+    @staticmethod
+    def convert_la_to_rgba(row, result):
+        for i in range(3):
+            #result[i::4] = row[0::2]
+            for item, dest in zip(itertools.islice(row, 0, len(row), 2),
+                    range(i, len(result), 4)):
+                result[dest] = item
+        #result[3::4] = row[1::2]
+        for item, dest in zip(itertools.islice(row, 1, len(row), 2),
+                range(3, len(result), 4)):
+            result[dest] = item
 
-            ai = -filter_unit
-            for i in range(len(result)):
-                x = scanline[i]
-                if ai < 0:
-                    a = 0
-                else:
-                    a = result[ai]
-                b = previous[i]
-                result[i] = (x + ((a + b) >> 1)) & 0xff
-                ai += 1
-
-        @staticmethod
-        def undo_filter_paeth(filter_unit, scanline, previous, result):
-            """Undo Paeth filter."""
-
-            # Also used for ci.
-            ai = -filter_unit
-            for i in range(len(result)):
-                x = scanline[i]
-                if ai < 0:
-                    a = c = 0
-                else:
-                    a = result[ai]
-                    c = previous[ai]
-                b = previous[i]
-                p = a + b - c
-                pa = abs(p - a)
-                pb = abs(p - b)
-                pc = abs(p - c)
-                if pa <= pb and pa <= pc:
-                    pr = a
-                elif pb <= pc:
-                    pr = b
-                else:
-                    pr = c
-                result[i] = (x + pr) & 0xff
-                ai += 1
-
-        @staticmethod
-        def convert_la_to_rgba(row, result):
-            for i in range(3):
-                #result[i::4] = row[0::2]
-                for item, dest in zip(itertools.islice(row, 0, len(row), 2),
-                        range(i, len(result), 4)):
-                    result[dest] = item
-            #result[3::4] = row[1::2]
-            for item, dest in zip(itertools.islice(row, 1, len(row), 2),
-                    range(3, len(result), 4)):
+    @staticmethod
+    def convert_l_to_rgba(row, result):
+        """Convert a grayscale image to RGBA. This method assumes
+        the alpha channel in result is already correctly
+        initialized.
+        """
+        for i in range(3):
+            #result[i::4] = row
+            for item, dest in zip(row, range(i, len(result), 4)):
                 result[dest] = item
 
-        @staticmethod
-        def convert_l_to_rgba(row, result):
-            """Convert a grayscale image to RGBA. This method assumes
-            the alpha channel in result is already correctly
-            initialized.
-            """
-            for i in range(3):
-                #result[i::4] = row
-                for item, dest in zip(row, range(i, len(result), 4)):
-                    result[dest] = item
-
-        @staticmethod
-        def convert_rgb_to_rgba(row, result):
-            """Convert an RGB image to RGBA. This method assumes the
-            alpha channel in result is already correctly initialized.
-            """
-            for i in range(3):
-                #result[i::4] = row[i::3]
-                for item, dest in zip(itertools.islice(row, i, len(row), 3),
-                        range(i, len(result), 4)):
-                    result[dest] = item
-
-## === Command Line Support ===
-#
-#def read_pam_header(infile):
-#    """
-#    Read (the rest of a) PAM header.  `infile` should be positioned
-#    immediately after the initial 'P7' line (at the beginning of the
-#    second line).  Returns are as for `read_pnm_header`.
-#    """
-#    
-#    # Unlike PBM, PGM, and PPM, we can read the header a line at a time.
-#    header = dict()
-#    while True:
-#        l = infile.readline().strip()
-#        if l == b'ENDHDR':
-#            break
-#        if not l:
-#            raise EOFError('PAM ended prematurely')
-#        if l[0] == b'#':
-#            continue
-#        l = l.split(None, 1)
-#        if l[0] not in header:
-#            header[l[0]] = l[1]
-#        else:
-#            header[l[0]] += b' ' + l[1]
-#
-#    required = [b'WIDTH', b'HEIGHT', b'DEPTH', b'MAXVAL']
-#    WIDTH,HEIGHT,DEPTH,MAXVAL = required
-#    present = [x for x in required if x in header]
-#    if len(present) != len(required):
-#        raise Error('PAM file must specify WIDTH, HEIGHT, DEPTH, and MAXVAL')
-#    width = int(header[WIDTH])
-#    height = int(header[HEIGHT])
-#    depth = int(header[DEPTH])
-#    maxval = int(header[MAXVAL])
-#    if (width <= 0 or
-#        height <= 0 or
-#        depth <= 0 or
-#        maxval <= 0):
-#        raise Error(
-#          'WIDTH, HEIGHT, DEPTH, MAXVAL must all be positive integers')
-#    return 'P7', width, height, depth, maxval
-#
-#def read_pnm_header(infile, supported=(b'P5', b'P6')):
-#    """
-#    Read a PNM header, returning (format,width,height,depth,maxval).
-#    `width` and `height` are in pixels.  `depth` is the number of
-#    channels in the image; for PBM and PGM it is synthesized as 1, for
-#    PPM as 3; for PAM images it is read from the header.  `maxval` is
-#    synthesized (as 1) for PBM images.
-#    """
-#
-#    # Generally, see http://netpbm.sourceforge.net/doc/ppm.html
-#    # and http://netpbm.sourceforge.net/doc/pam.html
-#
-#    # Technically 'P7' must be followed by a newline, so by using
-#    # rstrip() we are being liberal in what we accept.  I think this
-#    # is acceptable.
-#    type = infile.read(3).rstrip()
-#    if type not in supported:
-#        raise NotImplementedError('file format %s not supported' % type)
-#    if type == b'P7':
-#        # PAM header parsing is completely different.
-#        return read_pam_header(infile)
-#    # Expected number of tokens in header (3 for P4, 4 for P6)
-#    expected = 4
-#    pbm = (b'P1', b'P4')
-#    if type in pbm:
-#        expected = 3
-#    header = [type]
-#
-#    # We have to read the rest of the header byte by byte because the
-#    # final whitespace character (immediately following the MAXVAL in
-#    # the case of P6) may not be a newline.  Of course all PNM files in
-#    # the wild use a newline at this point, so it's tempting to use
-#    # readline; but it would be wrong.
-#    def getc():
-#        c = infile.read(1)
-#        if not c:
-#            raise Error('premature EOF reading PNM header')
-#        return c
-#
-#    c = getc()
-#    while True:
-#        # Skip whitespace that precedes a token.
-#        while c.isspace():
-#            c = getc()
-#        # Skip comments.
-#        while c == '#':
-#            while c not in b'\n\r':
-#                c = getc()
-#        if not c.isdigit():
-#            raise Error('unexpected character %s found in header' % c)
-#        # According to the specification it is legal to have comments
-#        # that appear in the middle of a token.
-#        # This is bonkers; I've never seen it; and it's a bit awkward to
-#        # code good lexers in Python (no goto).  So we break on such
-#        # cases.
-#        token = b''
-#        while c.isdigit():
-#            token += c
-#            c = getc()
-#        # Slight hack.  All "tokens" are decimal integers, so convert
-#        # them here.
-#        header.append(int(token))
-#        if len(header) == expected:
-#            break
-#    # Skip comments (again)
-#    while c == '#':
-#        while c not in '\n\r':
-#            c = getc()
-#    if not c.isspace():
-#        raise Error('expected header to end with whitespace, not %s' % c)
-#
-#    if type in pbm:
-#        # synthesize a MAXVAL
-#        header.append(1)
-#    depth = (1,3)[type == b'P6']
-#    return header[0], header[1], header[2], depth, header[3]
-#
-#def write_pnm(file, width, height, pixels, meta):
-#    """Write a Netpbm PNM/PAM file.
-#    """
-#
-#    bitdepth = meta['bitdepth']
-#    maxval = 2**bitdepth - 1
-#    # Rudely, the number of image planes can be used to determine
-#    # whether we are L (PGM), LA (PAM), RGB (PPM), or RGBA (PAM).
-#    planes = meta['planes']
-#    # Can be an assert as long as we assume that pixels and meta came
-#    # from a PNG file.
-#    assert planes in (1,2,3,4)
-#    if planes in (1,3):
-#        if 1 == planes:
-#            # PGM
-#            # Could generate PBM if maxval is 1, but we don't (for one
-#            # thing, we'd have to convert the data, not just blat it
-#            # out).
-#            fmt = 'P5'
-#        else:
-#            # PPM
-#            fmt = 'P6'
-#        header = '%s %d %d %d\n' % (fmt, width, height, maxval)
-#    if planes in (2,4):
-#        # PAM
-#        # See http://netpbm.sourceforge.net/doc/pam.html
-#        if 2 == planes:
-#            tupltype = 'GRAYSCALE_ALPHA'
-#        else:
-#            tupltype = 'RGB_ALPHA'
-#        header = ('P7\nWIDTH %d\nHEIGHT %d\nDEPTH %d\nMAXVAL %d\n'
-#                  'TUPLTYPE %s\nENDHDR\n' %
-#                  (width, height, planes, maxval, tupltype))
-#    file.write(header.encode('ascii'))
-#    # Values per row
-#    vpr = planes * width
-#    # struct format
-#    fmt = '>%d' % vpr
-#    if maxval > 0xff:
-#        fmt = fmt + 'H'
-#    else:
-#        fmt = fmt + 'B'
-#    for row in pixels:
-#        file.write(struct.pack(fmt, *row))
-#    file.flush()
-#
-#def color_triple(color):
-#    """
-#    Convert a command line colour value to a RGB triple of integers.
-#    FIXME: Somewhere we need support for greyscale backgrounds etc.
-#    """
-#    if color.startswith('#') and len(color) == 4:
-#        return (int(color[1], 16),
-#                int(color[2], 16),
-#                int(color[3], 16))
-#    if color.startswith('#') and len(color) == 7:
-#        return (int(color[1:3], 16),
-#                int(color[3:5], 16),
-#                int(color[5:7], 16))
-#    elif color.startswith('#') and len(color) == 13:
-#        return (int(color[1:5], 16),
-#                int(color[5:9], 16),
-#                int(color[9:13], 16))
-#
-#def _add_common_options(parser):
-#    """Call *parser.add_option* for each of the options that are
-#    common between this PNG--PNM conversion tool and the gen
-#    tool.
-#    """
-#    parser.add_option("-i", "--interlace",
-#                      default=False, action="store_true",
-#                      help="create an interlaced PNG file (Adam7)")
-#    parser.add_option("-t", "--transparent",
-#                      action="store", type="string", metavar="#RRGGBB",
-#                      help="mark the specified colour as transparent")
-#    parser.add_option("-b", "--background",
-#                      action="store", type="string", metavar="#RRGGBB",
-#                      help="save the specified background colour")
-#    parser.add_option("-g", "--gamma",
-#                      action="store", type="float", metavar="value",
-#                      help="save the specified gamma value")
-#    parser.add_option("-c", "--compression",
-#                      action="store", type="int", metavar="level",
-#                      help="zlib compression level (0-9)")
-#    return parser
-#
-#def _main(argv):
-#    """
-#    Run the PNG encoder with options from the command line.
-#    """
-#
-#    # Parse command line arguments
-#    from optparse import OptionParser
-#    version = '%prog ' + __version__
-#    parser = OptionParser(version=version)
-#    parser.set_usage("%prog [options] [imagefile]")
-#    parser.add_option('-r', '--read-png', default=False,
-#                      action='store_true',
-#                      help='Read PNG, write PNM')
-#    parser.add_option("-a", "--alpha",
-#                      action="store", type="string", metavar="pgmfile",
-#                      help="alpha channel transparency (RGBA)")
-#    _add_common_options(parser)
-#
-#    (options, args) = parser.parse_args(args=argv[1:])
-#
-#    # Convert options
-#    if options.transparent is not None:
-#        options.transparent = color_triple(options.transparent)
-#    if options.background is not None:
-#        options.background = color_triple(options.background)
-#
-#    # Prepare input and output files
-#    if len(args) == 0:
-#        infilename = '-'
-#        infile = sys.stdin
-#    elif len(args) == 1:
-#        infilename = args[0]
-#        infile = open(infilename, 'rb')
-#    else:
-#        parser.error("more than one input file")
-#    outfile = sys.stdout
-#    if sys.platform == "win32":
-#        import msvcrt, os
-#        msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
-#
-#    if options.read_png:
-#        # Encode PNG to PPM
-#        png = Reader(file=infile)
-#        width,height,pixels,meta = png.asDirect()
-#        write_pnm(outfile, width, height, pixels, meta) 
-#    else:
-#        # Encode PNM to PNG
-#        format, width, height, depth, maxval = \
-#          read_pnm_header(infile, (b'P5',b'P6',b'P7'))
-#        # When it comes to the variety of input formats, we do something
-#        # rather rude.  Observe that L, LA, RGB, RGBA are the 4 colour
-#        # types supported by PNG and that they correspond to 1, 2, 3, 4
-#        # channels respectively.  So we use the number of channels in
-#        # the source image to determine which one we have.  We do not
-#        # care about TUPLTYPE.
-#        greyscale = depth <= 2
-#        pamalpha = depth in (2,4)
-#        supported = [2**x-1 for x in range(1,17)]
-#        try:
-#            mi = supported.index(maxval)
-#        except ValueError:
-#            raise NotImplementedError(
-#              'your maxval (%s) not in supported list %s' %
-#              (maxval, str(supported)))
-#        bitdepth = mi+1
-#        writer = Writer(width, height,
-#                        greyscale=greyscale,
-#                        bitdepth=bitdepth,
-#                        interlace=options.interlace,
-#                        transparent=options.transparent,
-#                        background=options.background,
-#                        alpha=bool(pamalpha or options.alpha),
-#                        gamma=options.gamma,
-#                        compression=options.compression)
-#        if options.alpha:
-#            pgmfile = open(options.alpha, 'rb')
-#            format, awidth, aheight, adepth, amaxval = \
-#              read_pnm_header(pgmfile, 'P5')
-#            if amaxval != '255':
-#                raise NotImplementedError(
-#                  'maxval %s not supported for alpha channel' % amaxval)
-#            if (awidth, aheight) != (width, height):
-#                raise ValueError("alpha channel image size mismatch"
-#                                 " (%s has %sx%s but %s has %sx%s)"
-#                                 % (infilename, width, height,
-#                                    options.alpha, awidth, aheight))
-#            writer.convert_ppm_and_pgm(infile, pgmfile, outfile)
-#        else:
-#            writer.convert_pnm(infile, outfile)
-#
-#
-#if __name__ == '__main__':
-#    try:
-#        _main(sys.argv)
-#    except Error as e:
-#        print(e, file=sys.stderr)
+    @staticmethod
+    def convert_rgb_to_rgba(row, result):
+        """Convert an RGB image to RGBA. This method assumes the
+        alpha channel in result is already correctly initialized.
+        """
+        for i in range(3):
+            #result[i::4] = row[i::3]
+            for item, dest in zip(itertools.islice(row, i, len(row), 3),
+                    range(i, len(result), 4)):
+                result[dest] = item
