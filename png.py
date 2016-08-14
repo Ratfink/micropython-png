@@ -3,7 +3,7 @@
 # Copyright (C) 2006 Johann C. Rocholl <johann@browsershots.org>
 # Portions Copyright (C) 2009 David Jones <drj@pobox.com>
 # And probably portions Copyright (C) 2006 Nicko van Someren <nicko@nicko.org>
-# Micropython port by Clayton G. Hobbs
+# Micropython port Copyright (C) 2016 Clayton G. Hobbs
 #
 # Original concept by Johann C. Rocholl.
 #
