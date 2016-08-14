@@ -1350,24 +1350,27 @@ class Reader:
                 raise ChunkError('Chunk %s too short for checksum.' % type)
             if seek and type != seek:
                 continue
-            # NOTE: uzlib doesn't have crc32, so don't check CRC
-            #verify = zlib.crc32(type)
-            #verify = zlib.crc32(data, verify)
-            # Whether the output from zlib.crc32 is signed or not varies
-            # according to hideous implementation details, see
-            # http://bugs.python.org/issue1202 .
-            # We coerce it to be positive here (in a way which works on
-            # Python 2.3 and older).
-            #verify &= 2**32 - 1
-            #verify = struct.pack('!I', verify)
-            #if checksum != verify:
-            #    (a, ) = struct.unpack('!I', checksum)
-            #    (b, ) = struct.unpack('!I', verify)
-            #    message = "Checksum error in %s chunk: 0x%08X != 0x%08X." % (type, a, b)
-            #    if lenient:
-            #        warnings.warn(message, RuntimeWarning)
-            #    else:
-            #        raise ChunkError(message)
+            try:
+                verify = zlib.crc32(type)
+                verify = zlib.crc32(data, verify)
+                # Whether the output from zlib.crc32 is signed or not varies
+                # according to hideous implementation details, see
+                # http://bugs.python.org/issue1202 .
+                # We coerce it to be positive here (in a way which works on
+                # Python 2.3 and older).
+                verify &= 2**32 - 1
+                verify = struct.pack('!I', verify)
+                if checksum != verify:
+                    (a, ) = struct.unpack('!I', checksum)
+                    (b, ) = struct.unpack('!I', verify)
+                    message = "Checksum error in %s chunk: 0x%08X != 0x%08X." % (type, a, b)
+                    if lenient:
+                        warnings.warn(message, RuntimeWarning)
+                    else:
+                        raise ChunkError(message)
+            except AttributeError:
+                # uzlib doesn't have crc32, so don't fail if we can't do it
+                pass
             return type, data
 
     def chunks(self):
