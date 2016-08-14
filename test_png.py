@@ -439,6 +439,7 @@ class Test(unittest.TestCase):
         r = png.Reader(bytes=pngsuite.basi0g01[:13])
         try:
             r.asDirect()
+            self.fail()
         except Exception as e:
             self.assertTrue(isinstance(e, png.FormatError))
             self.assertTrue('chunk length' in str(e))
@@ -449,6 +450,7 @@ class Test(unittest.TestCase):
         r = png.Reader(bytes=pngsuite.basi0g01[:21])
         try:
             r.asDirect()
+            self.fail()
         except Exception as e:
             self.assertTrue(isinstance(e, png.FormatError))
             self.assertTrue('too short' in str(e))
@@ -459,6 +461,7 @@ class Test(unittest.TestCase):
         r = png.Reader(bytes=pngsuite.basi0g01[:29])
         try:
             r.asDirect()
+            self.fail()
         except Exception as e:
             self.assertTrue(isinstance(e, png.FormatError))
             self.assertTrue('checksum' in str(e))
