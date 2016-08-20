@@ -17,4 +17,4 @@ setup(name='micropython-png',
       author_email = "clay@lakeserv.net",
       license='MIT',
       py_modules=['png'],
-      install_requires=['micropython-functools', 'micropython-itertools', 'micropython-operator', 'micropython-warnings'])
+      install_requires=['micropython-itertools'])
